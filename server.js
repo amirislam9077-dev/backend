@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const mysql = require('mysql2');
 const nodemailer = require('nodemailer');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8081;
@@ -9,15 +8,6 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Laptop@123',
-  database: process.env.DB_NAME || 'shopname',
-};
-
-const pool = mysql.createPool(dbConfig);
 const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
 const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
@@ -50,53 +40,8 @@ if (!smtpUser || !smtpPass) {
   });
 }
 
-pool.getConnection((err, connection) => {
-  if (err) {
-    console.error('MySQL connection failed:', err.message);
-    return;
-  }
-
-  console.log('MySQL connection established');
-  connection.release();
-});
-
 app.get('/', (req, res) => {
   res.json('from backend side');
-});
-
-app.post('/value', (req, res) => {
-  const { name, email, phone, salePur, ttype } = req.body;
-  if (!name || !email || !phone || !salePur || !ttype) {
-    return res.status(400).json({ message: 'Missing required fields.' });
-  }
-
-  const normalizedPhone = String(phone).trim();
-  const digitsOnly = normalizedPhone.replace(/\D/g, '');
-
-  if (digitsOnly.length < 7 || digitsOnly.length > 20) {
-    return res.status(400).json({
-      message: 'Phone must contain 7 to 20 digits.',
-    });
-  }
-
-  const insertQuery =
-    'INSERT INTO value (enrolled_date, name, email, phone, salePur, ttype) VALUES (CURRENT_DATE, ?, ?, ?, ?, ?)';
-
-  pool.query(
-    insertQuery,
-    [name, email, normalizedPhone, salePur, ttype],
-    (err, result) => {
-      if (err) {
-        console.error('Failed to insert valuation record:', err.message);
-        return res.status(500).json({ message: 'Failed to save data.' });
-      }
-
-      return res.status(201).json({
-        message: 'Valuation saved successfully.',
-        id: result.insertId,
-      });
-    }
-  );
 });
 
 app.post('/orders', async (req, res) => {
