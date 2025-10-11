@@ -1,41 +1,23 @@
+require('dotenv').config(); // Load .env
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8081;
-
+const PORT = process.env.PORT || 8081;
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Email config
-const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
-const smtpFrom = process.env.SMTP_FROM || orderNotificationEmail;
+// Set SendGrid API Key
 const sendGridApiKey = process.env.SENDGRID_API_KEY;
-
-let transporter = null;
-
 if (!sendGridApiKey) {
-  console.warn('⚠️ SENDGRID_API_KEY not set. Emails will not be sent.');
-} else {
-  transporter = nodemailer.createTransport({
-    host: 'smtp.sendgrid.net',
-    port: 587,
-    auth: {
-      user: 'apikey', // this literal string is required by SendGrid
-      pass: sendGridApiKey,
-    },
-  });
-
-  transporter.verify((err) => {
-    if (err) {
-      console.error('❌ Email transporter verification failed:', err.message);
-    } else {
-      console.log('✅ Email transporter is ready to send messages.');
-    }
-  });
+  console.warn('❌ SENDGRID_API_KEY not set. Emails will not be sent.');
 }
+sgMail.setApiKey(sendGridApiKey);
+
+// Default notification email
+const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
 app.get('/', (req, res) => {
   res.json({ message: 'Backend is running.' });
@@ -55,7 +37,6 @@ app.post('/orders', async (req, res) => {
     subtotal,
   } = req.body || {};
 
-  // Validate order data
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
   }
@@ -68,41 +49,16 @@ app.post('/orders', async (req, res) => {
 
   const normalizedSubtotal = Number(subtotal) || 0;
 
-  if (!transporter) {
-    console.warn('⚠️ Email service is not configured. Order will not be emailed.');
-    console.info('Order details (for debug):', {
-      name,
-      email,
-      phone,
-      address,
-      city,
-      country,
-      remarks,
-      shippingMethod,
-      subtotal: normalizedSubtotal,
-      itemCount: items.length,
-    });
-
-    return res.status(200).json({
-      message:
-        'Order received. Email notifications are currently disabled due to missing SENDGRID_API_KEY.',
-    });
-  }
-
-  const itemsHtml = items
-    .map(
-      (item, index) => `
-        <tr>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">${index + 1}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.title || 'Unnamed item'}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.size || '-'}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;text-align:center;">${item.quantity || 1}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.collection || '-'}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.sku || '-'}</td>
-          <td style="padding:4px 8px;border:1px solid #e5e7eb;">Rs.${Number(item.price || 0).toLocaleString('en-IN')}</td>
-        </tr>`
-    )
-    .join('');
+  const itemsHtml = items.map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${item.title || 'Unnamed item'}</td>
+      <td>${item.size || '-'}</td>
+      <td>${item.quantity || 1}</td>
+      <td>${item.collection || '-'}</td>
+      <td>${item.sku || '-'}</td>
+      <td>Rs.${Number(item.price || 0).toLocaleString('en-IN')}</td>
+    </tr>`).join('');
 
   const html = `
     <h2>New Order Received</h2>
@@ -110,36 +66,26 @@ app.post('/orders', async (req, res) => {
     <p><strong>Email:</strong> ${email}</p>
     <p><strong>Phone:</strong> ${phone}</p>
     <p><strong>Address:</strong> ${address}, ${city}, ${country || 'Pakistan'}</p>
-    ${shippingMethod ? `<p><strong>Preferred Shipping:</strong> ${shippingMethod}</p>` : ''}
+    ${shippingMethod ? `<p><strong>Shipping:</strong> ${shippingMethod}</p>` : ''}
     ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ''}
     <p><strong>Subtotal:</strong> Rs.${normalizedSubtotal.toLocaleString('en-IN')}</p>
-    <table style="border-collapse:collapse;font-family:Arial, sans-serif;margin-top:16px;">
+    <table border="1" cellpadding="5" cellspacing="0" style="margin-top:10px;">
       <thead>
-        <tr>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">#</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">Product</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">Size</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">Qty</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">Collection</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">SKU</th>
-          <th style="padding:6px 8px;border:1px solid #e5e7eb;background:#f1f5f9;">Price</th>
-        </tr>
+        <tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Collection</th><th>SKU</th><th>Price</th></tr>
       </thead>
-      <tbody>
-        ${itemsHtml}
-      </tbody>
+      <tbody>${itemsHtml}</tbody>
     </table>
   `;
 
   const text = `New order from ${name} (${email}, ${phone})
 Address: ${address}, ${city}, ${country || 'Pakistan'}
 Subtotal: Rs.${normalizedSubtotal}
-Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed item'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
+Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
 
   try {
-    await transporter.sendMail({
+    await sgMail.send({
       to: orderNotificationEmail,
-      from: smtpFrom,
+      from: orderNotificationEmail,
       replyTo: email,
       subject: `🛒 New Order from ${name}`,
       text,
@@ -147,8 +93,8 @@ Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed item
     });
 
     return res.status(200).json({ message: '✅ Order email sent successfully.' });
-  } catch (error) {
-    console.error('❌ Failed to send order email:', error.message);
+  } catch (err) {
+    console.error('❌ SendGrid API failed:', err.response?.body || err.message);
     return res.status(500).json({ message: 'Failed to send order email.' });
   }
 });
