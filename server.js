@@ -85,7 +85,7 @@ Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed'} (R
   try {
    await sgMail.send({
   to: orderNotificationEmail, // where you receive order emails
-  from: 'amirislam9077@gmail.com', // ✅ verified sender in SendGrid
+  from: 'amirislam9077@gmail.com', // ✅ verisfied sender in SendGrid
   replyTo: email, // customer email
   subject: `🛒 New Order from ${name}`,
   text,
