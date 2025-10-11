@@ -83,14 +83,15 @@ Subtotal: Rs.${normalizedSubtotal}
 Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
 
   try {
-    await sgMail.send({
-      to: orderNotificationEmail,
-      from: orderNotificationEmail,
-      replyTo: email,
-      subject: `🛒 New Order from ${name}`,
-      text,
-      html,
-    });
+   await sgMail.send({
+  to: orderNotificationEmail, // where you receive order emails
+  from: 'amirislam9077@gmail.com', // ✅ verified sender in SendGrid
+  replyTo: email, // customer email
+  subject: `🛒 New Order from ${name}`,
+  text,
+  html,
+});
+
 
     return res.status(200).json({ message: '✅ Order email sent successfully.' });
   } catch (err) {
