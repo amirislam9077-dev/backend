@@ -12,7 +12,7 @@ app.use(express.json());
 // Email config
 const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 const smtpFrom = process.env.SMTP_FROM || orderNotificationEmail;
-const sendGridApiKey = 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;
+const sendGridApiKey = process.env.SENDGRID_API_KEY;
 
 let transporter = null;
 
