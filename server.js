@@ -8,45 +8,54 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
-const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
-const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : smtpPort === 465;
-const smtpUser = process.env.SMTP_USER || 'amirislam9077@gmail.com';
-const smtpPass = process.env.SMTP_PASS || 'vvnqiprwfksanior';
+// Email config
+const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
+const smtpFrom = process.env.SMTP_FROM || orderNotificationEmail;
+const sendGridApiKey = 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;
 
 let transporter = null;
 
-if (!smtpUser || !smtpPass) {
-  console.warn('Email service not configured. Missing SMTP user or password.');
+if (!sendGridApiKey) {
+  console.warn('⚠️ SENDGRID_API_KEY not set. Emails will not be sent.');
 } else {
   transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpSecure,
+    host: 'smtp.sendgrid.net',
+    port: 587,
     auth: {
-      user: smtpUser,
-      pass: smtpPass,
+      user: 'apikey', // this literal string is required by SendGrid
+      pass: sendGridApiKey,
     },
   });
 
-  transporter.verify((verifyErr) => {
-    if (verifyErr) {
-      console.error('Mail transporter verification failed:', verifyErr.message);
+  transporter.verify((err) => {
+    if (err) {
+      console.error('❌ Email transporter verification failed:', err.message);
     } else {
-      console.log('Mail transporter ready to send messages');
+      console.log('✅ Email transporter is ready to send messages.');
     }
   });
 }
 
 app.get('/', (req, res) => {
-  res.json('from backend side');
+  res.json({ message: 'Backend is running.' });
 });
 
 app.post('/orders', async (req, res) => {
-  const { name, email, phone, address, city, country, remarks, shippingMethod, items, subtotal } = req.body || {};
+  const {
+    name,
+    email,
+    phone,
+    address,
+    city,
+    country,
+    remarks,
+    shippingMethod,
+    items,
+    subtotal,
+  } = req.body || {};
 
+  // Validate order data
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
   }
@@ -60,30 +69,30 @@ app.post('/orders', async (req, res) => {
   const normalizedSubtotal = Number(subtotal) || 0;
 
   if (!transporter) {
-    console.warn('Email service not configured. Skipping email dispatch for order.');
-    console.info('Order details (notification suppressed):', {
+    console.warn('⚠️ Email service is not configured. Order will not be emailed.');
+    console.info('Order details (for debug):', {
       name,
       email,
       phone,
       address,
       city,
-      country: country || 'Pakistan',
+      country,
       remarks,
       shippingMethod,
       subtotal: normalizedSubtotal,
-      itemCount: Array.isArray(items) ? items.length : 0,
+      itemCount: items.length,
     });
 
     return res.status(200).json({
       message:
-        'Order received. Email notifications are currently disabled because SMTP credentials are missing.',
+        'Order received. Email notifications are currently disabled due to missing SENDGRID_API_KEY.',
     });
   }
 
   const itemsHtml = items
     .map(
-      (item, index) =>
-        `<tr>
+      (item, index) => `
+        <tr>
           <td style="padding:4px 8px;border:1px solid #e5e7eb;">${index + 1}</td>
           <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.title || 'Unnamed item'}</td>
           <td style="padding:4px 8px;border:1px solid #e5e7eb;">${item.size || '-'}</td>
@@ -122,27 +131,28 @@ app.post('/orders', async (req, res) => {
     </table>
   `;
 
-  const text = `New order received from ${name} (${email}, ${phone}).\nAddress: ${address}, ${city}, ${country || 'Pakistan'}\nSubtotal: Rs.${normalizedSubtotal.toLocaleString('en-IN')}\nItems: ${items
-    .map((item) => `${item.quantity || 1}x ${item.title || 'Unnamed item'} (Rs.${Number(item.price || 0)})`)
-    .join('; ')}`;
+  const text = `New order from ${name} (${email}, ${phone})
+Address: ${address}, ${city}, ${country || 'Pakistan'}
+Subtotal: Rs.${normalizedSubtotal}
+Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed item'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
 
   try {
     await transporter.sendMail({
       to: orderNotificationEmail,
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: smtpFrom,
       replyTo: email,
-      subject: `New Order from ${name}`,
+      subject: `🛒 New Order from ${name}`,
       text,
       html,
     });
 
-    return res.status(200).json({ message: 'Order sent successfully.' });
+    return res.status(200).json({ message: '✅ Order email sent successfully.' });
   } catch (error) {
-    console.error('Failed to send order email:', error.message);
+    console.error('❌ Failed to send order email:', error.message);
     return res.status(500).json({ message: 'Failed to send order email.' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
