@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
@@ -9,19 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
-
+const resend = new Resend(process.env.RESEND_API_KEY);
 const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
 app.get('/', (req, res) => {
@@ -82,18 +70,12 @@ app.post('/orders', async (req, res) => {
     </table>
   `;
 
-  const text = `New order from ${name} (${email}, ${phone})
-Address: ${address}, ${city}, ${country || 'Pakistan'}
-Subtotal: Rs.${normalizedSubtotal}
-Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
-
   try {
-    await transporter.sendMail({
-      from: `"Khurram Studio Orders" <${process.env.GMAIL_USER}>`,
+    await resend.emails.send({
+      from: 'Khurram Studio <onboarding@resend.dev>',
       to: orderNotificationEmail,
-      replyTo: email,
+      reply_to: email,
       subject: `New Order from ${name}`,
-      text,
       html,
     });
 
