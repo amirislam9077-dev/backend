@@ -11,11 +11,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@sendgrid/mail": "^7.7.0",
     "cors": "^2.8.5",
-      "dotenv": "^16.0.3",
-    "@sendgrid/mail": "^7.7.0",   
-
+    "dotenv": "^16.0.3",
     "express": "^5.1.0",
+    "nodemailer": "^8.0.7",
     "nodemon": "^3.1.10"
   }
 }

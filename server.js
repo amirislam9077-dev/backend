@@ -1,7 +1,7 @@
-require('dotenv').config(); // Load .env
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
@@ -9,14 +9,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Set SendGrid API Key
-const sendGridApiKey = process.env.SENDGRID_API_KEY;
-if (!sendGridApiKey) {
-  console.warn('❌ SENDGRID_API_KEY not set. Emails will not be sent.');
-}
-sgMail.setApiKey(sendGridApiKey);
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
 
-// Default notification email
 const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
 app.get('/', (req, res) => {
@@ -83,23 +83,22 @@ Subtotal: Rs.${normalizedSubtotal}
 Items: ${items.map(item => `${item.quantity || 1}x ${item.title || 'Unnamed'} (Rs.${Number(item.price || 0)})`).join(', ')}`;
 
   try {
-   await sgMail.send({
-  to: orderNotificationEmail, // where you receive order emails
-  from: 'amirislam9077@gmail.com', // ✅ verisfied sender in SendGrid
-  replyTo: email, // customer email
-  subject: `🛒 New Order from ${name}`,
-  text,
-  html,
-});
+    await transporter.sendMail({
+      from: `"Khurram Studio Orders" <${process.env.GMAIL_USER}>`,
+      to: orderNotificationEmail,
+      replyTo: email,
+      subject: `New Order from ${name}`,
+      text,
+      html,
+    });
 
-
-    return res.status(200).json({ message: '✅ Order email sent successfully.' });
+    return res.status(200).json({ message: 'Order sent successfully.' });
   } catch (err) {
-    console.error('❌ SendGrid API failed:', err.response?.body || err.message);
+    console.error('Email send failed:', err.message);
     return res.status(500).json({ message: 'Failed to send order email.' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
