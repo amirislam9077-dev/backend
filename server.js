@@ -1,7 +1,10 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { Resend } = require('resend');
+const { initDatabase, getPool } = require('./db');
+const orders = require('./orders');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
@@ -70,22 +73,106 @@ app.post('/orders', async (req, res) => {
     </table>
   `;
 
+  // Save first so the order is kept even if the email fails
+  let orderId = null;
   try {
-    await resend.emails.send({
+    orderId = await orders.saveOrder(req.body);
+  } catch (err) {
+    console.error('Saving order failed:', err.message);
+  }
+
+  let emailed = false;
+  try {
+    // Resend returns { error } instead of throwing when sending fails
+    const { error: sendError } = await resend.emails.send({
       from: 'Khurram Studio <onboarding@resend.dev>',
       to: orderNotificationEmail,
       reply_to: email,
-      subject: `New Order from ${name}`,
-      html,
+      subject: orderId ? `New Order #${orderId} from ${name}` : `New Order from ${name}`,
+      html: orderId ? `<p><strong>Order #:</strong> ${orderId}</p>${html}` : html,
     });
-
-    return res.status(200).json({ message: 'Order sent successfully.' });
+    if (sendError) {
+      throw new Error(sendError.message || 'Resend rejected the email');
+    }
+    emailed = true;
+    await orders.markEmailSent(orderId).catch(() => {});
   } catch (err) {
     console.error('Email send failed:', err.message);
-    return res.status(500).json({ message: 'Failed to send order email.' });
   }
+
+  if (!orderId && !emailed) {
+    return res.status(500).json({ message: 'Failed to send the order. Please try again.' });
+  }
+  return res.status(200).json({ message: 'Order sent successfully.', orderId });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// ----- Admin: view and filter saved orders (needs ADMIN_EMAIL + ADMIN_PASSWORD) -----
+
+const sameText = (given, expected) => {
+  const a = crypto.createHash('sha256').update(String(given)).digest();
+  const b = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(a, b);
+};
+
+const requireAdmin = (req, res, next) => {
+  const expectedEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const expectedPassword = process.env.ADMIN_PASSWORD || '';
+  if (!expectedEmail || !expectedPassword) {
+    return res.status(503).json({ message: 'ADMIN_EMAIL and ADMIN_PASSWORD must be set on the server.' });
+  }
+  const givenEmail = String(req.get('x-admin-email') || '').trim().toLowerCase();
+  const givenPassword = String(req.get('x-admin-key') || '');
+  // Check both every time so a wrong email and a wrong password take the same time
+  const emailOk = sameText(givenEmail, expectedEmail);
+  const passwordOk = sameText(givenPassword, expectedPassword);
+  if (!emailOk || !passwordOk) {
+    return res.status(401).json({ message: 'Wrong email or password.' });
+  }
+  if (!getPool()) {
+    return res.status(503).json({ message: 'Database is not connected.' });
+  }
+  return next();
+};
+
+const adminRoute = (handler) => async (req, res) => {
+  try {
+    await handler(req, res);
+  } catch (err) {
+    console.error('Admin request failed:', err.message);
+    res.status(500).json({ message: 'Something went wrong reading the orders.' });
+  }
+};
+
+app.get('/admin/orders', requireAdmin, adminRoute(async (req, res) => {
+  res.json(await orders.listOrders(req.query));
+}));
+
+app.get('/admin/orders/filters', requireAdmin, adminRoute(async (req, res) => {
+  res.json(await orders.getFilterOptions());
+}));
+
+app.get('/admin/orders/:id', requireAdmin, adminRoute(async (req, res) => {
+  const order = await orders.getOrder(Number(req.params.id));
+  if (!order) {
+    return res.status(404).json({ message: 'Order not found.' });
+  }
+  return res.json(order);
+}));
+
+app.patch('/admin/orders/:id/status', requireAdmin, adminRoute(async (req, res) => {
+  const { status } = req.body || {};
+  if (!orders.STATUSES.includes(status)) {
+    return res.status(400).json({ message: `Status must be one of: ${orders.STATUSES.join(', ')}.` });
+  }
+  const updated = await orders.updateStatus(Number(req.params.id), status);
+  if (!updated) {
+    return res.status(404).json({ message: 'Order not found.' });
+  }
+  return res.json({ message: 'Status updated.', status });
+}));
+
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 });
