@@ -1,0 +1,17 @@
+# Render's free plan puts the server to sleep after ~15 idle minutes, and the
+# first visitor then waits about a minute. Visiting it every 10 minutes keeps
+# it awake. GitHub may run scheduled jobs a few minutes late.
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Visit the backend
+        run: curl --silent --show-error --max-time 120 --retry 2 https://backend-2-q4lr.onrender.com/
