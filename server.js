@@ -5,18 +5,33 @@ const cors = require('cors');
 const { Resend } = require('resend');
 const { initDatabase, getPool } = require('./db');
 const orders = require('./orders');
+const discounts = require('./discounts');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// Room for the deposit slip picture sent with an order
+app.use(express.json({ limit: '8mb' }));
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Customer text goes into the email HTML; escape it so it shows as plain text
+const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const orderNotificationEmail = process.env.ORDER_NOTIFICATION_EMAIL || 'amirislam9077@gmail.com';
 
 app.get('/', (req, res) => {
   res.json({ message: 'Backend is running.' });
+});
+
+// Sale discount % for each collection, shown on the website
+app.get('/discounts', async (req, res) => {
+  try {
+    res.json(await discounts.getDiscounts());
+  } catch (err) {
+    console.error('Reading discounts failed:', err.message);
+    res.status(500).json({ message: 'Could not read discounts.' });
+  }
 });
 
 app.post('/orders', async (req, res) => {
@@ -29,9 +44,13 @@ app.post('/orders', async (req, res) => {
     country,
     remarks,
     shippingMethod,
+    bankName,
+    referenceNo,
+    depositSlip,
     items,
     subtotal,
   } = req.body || {};
+  const slip = orders.parseSlip(depositSlip);
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
@@ -64,6 +83,9 @@ app.post('/orders', async (req, res) => {
     <p><strong>Address:</strong> ${address}, ${city}, ${country || 'Pakistan'}</p>
     ${shippingMethod ? `<p><strong>Shipping:</strong> ${shippingMethod}</p>` : ''}
     ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ''}
+    ${bankName ? `<p><strong>Bank:</strong> ${esc(bankName)}</p>` : ''}
+    ${referenceNo ? `<p><strong>Reference No:</strong> ${esc(referenceNo)}</p>` : ''}
+    <p><strong>Deposit slip:</strong> ${slip ? 'attached' : 'not provided'}</p>
     <p><strong>Subtotal:</strong> Rs.${normalizedSubtotal.toLocaleString('en-IN')}</p>
     <table border="1" cellpadding="5" cellspacing="0" style="margin-top:10px;">
       <thead>
@@ -90,6 +112,14 @@ app.post('/orders', async (req, res) => {
       reply_to: email,
       subject: orderId ? `New Order #${orderId} from ${name}` : `New Order from ${name}`,
       html: orderId ? `<p><strong>Order #:</strong> ${orderId}</p>${html}` : html,
+      ...(slip
+        ? {
+            attachments: [{
+              filename: `deposit-slip${orderId ? `-${orderId}` : ''}.${slip.type.split('/')[1].replace('jpeg', 'jpg')}`,
+              content: slip.buffer.toString('base64'),
+            }],
+          }
+        : {}),
     });
     if (sendError) {
       throw new Error(sendError.message || 'Resend rejected the email');
@@ -159,6 +189,16 @@ app.get('/admin/orders/:id', requireAdmin, adminRoute(async (req, res) => {
   return res.json(order);
 }));
 
+app.get('/admin/orders/:id/slip', requireAdmin, adminRoute(async (req, res) => {
+  const slip = await orders.getSlip(Number(req.params.id));
+  if (!slip) {
+    return res.status(404).json({ message: 'No deposit slip for this order.' });
+  }
+  res.set('Content-Type', slip.type);
+  res.set('Cache-Control', 'private, no-store');
+  return res.send(slip.data);
+}));
+
 app.patch('/admin/orders/:id/status', requireAdmin, adminRoute(async (req, res) => {
   const { status } = req.body || {};
   if (!orders.STATUSES.includes(status)) {
@@ -169,6 +209,10 @@ app.patch('/admin/orders/:id/status', requireAdmin, adminRoute(async (req, res) 
     return res.status(404).json({ message: 'Order not found.' });
   }
   return res.json({ message: 'Status updated.', status });
+}));
+
+app.put('/admin/discounts', requireAdmin, adminRoute(async (req, res) => {
+  res.json(await discounts.saveDiscounts(req.body?.discounts));
 }));
 
 initDatabase().then(() => {

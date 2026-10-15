@@ -67,6 +67,11 @@ const TABLES = [
     INDEX idx_items_collection (collection),
     CONSTRAINT fk_items_order FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS discounts (
+    collection VARCHAR(50) NOT NULL PRIMARY KEY,
+    percent TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
 // Creates the database and tables if they don't exist yet, then opens the pool.
@@ -98,6 +103,7 @@ async function initDatabase() {
     for (const statement of TABLES) {
       await pool.query(statement);
     }
+    await addMissingColumns();
 
     console.log(`MySQL connected: database "${DB_NAME}" is ready.`);
     return pool;
@@ -105,6 +111,27 @@ async function initDatabase() {
     pool = null;
     console.error(`MySQL not available (${err.code || err.message}). Orders will only be emailed.`);
     return null;
+  }
+}
+
+// Columns added after the orders table first went live
+const NEW_ORDER_COLUMNS = {
+  bank_name: 'VARCHAR(100) NULL AFTER remarks',
+  reference_no: 'VARCHAR(100) NULL AFTER bank_name',
+  deposit_slip: 'MEDIUMBLOB NULL AFTER reference_no',
+  deposit_slip_type: 'VARCHAR(50) NULL AFTER deposit_slip',
+};
+
+async function addMissingColumns() {
+  const [rows] = await pool.query(
+    'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+    [DB_NAME, 'orders']
+  );
+  const existing = new Set(rows.map((row) => row.COLUMN_NAME));
+  for (const [name, definition] of Object.entries(NEW_ORDER_COLUMNS)) {
+    if (!existing.has(name)) {
+      await pool.query(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
+    }
   }
 }
 
