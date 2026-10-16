@@ -8,6 +8,7 @@ const orders = require('./orders');
 const { sendEmail } = require('./mail');
 const { STATUSES_WITH_EMAIL, statusEmail } = require('./statusEmail');
 const discounts = require('./discounts');
+const reports = require('./reports');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
@@ -177,6 +178,10 @@ const adminRoute = (handler) => async (req, res) => {
 
 app.get('/admin/orders', requireAdmin, adminRoute(async (req, res) => {
   res.json(await orders.listOrders(req.query));
+}));
+
+app.get('/admin/reports', requireAdmin, adminRoute(async (req, res) => {
+  res.json(await reports.getReport(req.query));
 }));
 
 app.get('/admin/orders/filters', requireAdmin, adminRoute(async (req, res) => {
