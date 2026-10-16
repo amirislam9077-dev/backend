@@ -7,11 +7,17 @@ const { Resend } = require('resend');
 //   without one Resend only delivers to the account owner's own address.
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Brevo keys start with "xkeysib-"; that part is easy to miss when copying, so add it back
+const brevoKey = () => {
+  const key = String(process.env.BREVO_API_KEY || '').trim();
+  return key && !key.startsWith('xkeysib-') && /^[0-9a-f]{64}-[A-Za-z0-9]+$/.test(key) ? `xkeysib-${key}` : key;
+};
+
 async function sendWithBrevo({ to, subject, html, replyTo }) {
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'api-key': process.env.BREVO_API_KEY,
+      'api-key': brevoKey(),
       'content-type': 'application/json',
       accept: 'application/json',
     },
