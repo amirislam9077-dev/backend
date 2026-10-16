@@ -166,7 +166,11 @@ async function listOrders(query) {
   );
   const [rows] = await pool.query(
     `SELECT ${ORDER_COLUMNS},
-       (SELECT GROUP_CONCAT(DISTINCT oi.collection SEPARATOR ', ') FROM order_items oi WHERE oi.order_id = o.id) AS collections
+       (SELECT GROUP_CONCAT(DISTINCT oi.collection SEPARATOR ', ') FROM order_items oi WHERE oi.order_id = o.id) AS collections,
+       (SELECT GROUP_CONCAT(
+          CONCAT(oi.quantity, ' × ', oi.title, IF(oi.size IS NULL OR oi.size = '', '', CONCAT(' (', oi.size, ')')))
+          ORDER BY oi.id SEPARATOR '\\n')
+        FROM order_items oi WHERE oi.order_id = o.id) AS products
      FROM orders o ${whereSql}
      ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
