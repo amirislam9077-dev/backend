@@ -136,6 +136,16 @@ app.post('/orders', async (req, res) => {
   if (!orderId && !emailed) {
     return res.status(500).json({ message: 'Failed to send the order. Please try again.' });
   }
+
+  // Thank-you email to the customer (doesn't hold up or fail the order)
+  if (orderId) {
+    orders.getOrder(orderId)
+      .then((saved) => {
+        const { subject, html } = statusEmail(saved, 'received');
+        return sendEmail({ to: saved.email, subject, html, replyTo: orderNotificationEmail });
+      })
+      .catch((err) => console.error('Customer order email failed:', err.message));
+  }
   return res.status(200).json({ message: 'Order sent successfully.', orderId });
 });
 

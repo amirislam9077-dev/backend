@@ -1,4 +1,4 @@
-// Email to the customer when the shop confirms or ships their order.
+// Emails to the customer: order received, confirmed and shipped.
 
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -6,6 +6,11 @@ const esc = (value) =>
 const money = (value) => `Rs.${Math.round(Number(value) || 0).toLocaleString('en-PK')}`;
 
 const MESSAGES = {
+  received: {
+    subject: (id) => `We received your order #${id} — Khurram Studio`,
+    heading: 'Thank you for your order',
+    text: 'We have received your order and payment details. Our team will check your payment and confirm your order shortly. You will get another email when it is confirmed and when it is shipped.',
+  },
   confirmed: {
     subject: (id) => `Your order #${id} is confirmed — Khurram Studio`,
     heading: 'Your order is confirmed',
@@ -18,7 +23,8 @@ const MESSAGES = {
   },
 };
 
-const STATUSES_WITH_EMAIL = Object.keys(MESSAGES);
+// "received" is sent when the order is placed; the rest when the admin changes the status
+const STATUSES_WITH_EMAIL = Object.keys(MESSAGES).filter((key) => key !== 'received');
 
 function statusEmail(order, status) {
   const m = MESSAGES[status];
