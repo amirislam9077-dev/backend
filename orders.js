@@ -38,6 +38,8 @@ async function saveOrder(order) {
       sku: item.sku ? String(item.sku).slice(0, 100) : null,
       size: item.size ? String(item.size).slice(0, 50) : null,
       collection: item.collection ? String(item.collection).slice(0, 100) : null,
+      // Only web links (no data: pictures) so the table stays small
+      imageUrl: /^https?:\/\/|^\//.test(String(item.image || '')) ? String(item.image).slice(0, 600) : null,
       quantity,
       unitPrice,
       lineTotal: toMoney(unitPrice * quantity),
@@ -80,9 +82,9 @@ async function saveOrder(order) {
     for (const item of items) {
       await conn.execute(
         `INSERT INTO order_items
-          (order_id, title, sku, size, collection, quantity, unit_price, line_total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [orderId, item.title, item.sku, item.size, item.collection, item.quantity, item.unitPrice, item.lineTotal]
+          (order_id, title, sku, size, collection, image_url, quantity, unit_price, line_total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [orderId, item.title, item.sku, item.size, item.collection, item.imageUrl, item.quantity, item.unitPrice, item.lineTotal]
       );
     }
 
