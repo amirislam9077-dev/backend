@@ -52,6 +52,13 @@ async function getReport(query) {
     params
   );
 
+  const [monthly] = await pool.query(
+    `SELECT DATE_FORMAT(o.created_at, '%Y-%m') AS month, COUNT(*) AS orders, COALESCE(SUM(o.subtotal), 0) AS revenue,
+            COALESCE(SUM(o.item_count), 0) AS items
+     FROM orders o WHERE ${sold} GROUP BY month ORDER BY month DESC LIMIT 24`,
+    params
+  );
+
   const numbers = (rows, ...keys) =>
     rows.map((row) => ({ ...row, ...Object.fromEntries(keys.map((key) => [key, Number(row[key]) || 0])) }));
   const orders = Number(summary.orders) || 0;
@@ -64,6 +71,7 @@ async function getReport(query) {
     byCollection: numbers(byCollection, 'quantity', 'revenue', 'orders'),
     topProducts: numbers(topProducts, 'quantity', 'revenue'),
     daily: numbers(daily, 'orders', 'revenue'),
+    monthly: numbers(monthly, 'orders', 'revenue', 'items'),
   };
 }
 
