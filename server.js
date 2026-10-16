@@ -5,6 +5,8 @@ const cors = require('cors');
 const { Resend } = require('resend');
 const { initDatabase, getPool } = require('./db');
 const orders = require('./orders');
+const { sendEmail } = require('./mail');
+const { STATUSES_WITH_EMAIL, statusEmail } = require('./statusEmail');
 const discounts = require('./discounts');
 
 const PORT = process.env.PORT || 8081;
@@ -204,11 +206,21 @@ app.patch('/admin/orders/:id/status', requireAdmin, adminRoute(async (req, res) 
   if (!orders.STATUSES.includes(status)) {
     return res.status(400).json({ message: `Status must be one of: ${orders.STATUSES.join(', ')}.` });
   }
-  const updated = await orders.updateStatus(Number(req.params.id), status);
-  if (!updated) {
+  const id = Number(req.params.id);
+  const before = await orders.getOrder(id);
+  if (!before) {
     return res.status(404).json({ message: 'Order not found.' });
   }
-  return res.json({ message: 'Status updated.', status });
+  await orders.updateStatus(id, status);
+
+  // Confirmed / shipped: tell the customer (only when the status actually changes)
+  let customerEmail = null;
+  if (STATUSES_WITH_EMAIL.includes(status) && before.status !== status) {
+    const { subject, html } = statusEmail({ ...before, status }, status);
+    customerEmail = await sendEmail({ to: before.email, subject, html, replyTo: orderNotificationEmail });
+    customerEmail.to = before.email;
+  }
+  return res.json({ message: 'Status updated.', status, customerEmail });
 }));
 
 app.put('/admin/discounts', requireAdmin, adminRoute(async (req, res) => {
