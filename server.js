@@ -1,5 +1,4 @@
 require('dotenv').config();
-const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { Resend } = require('resend');
@@ -9,6 +8,7 @@ const { sendEmail } = require('./mail');
 const { STATUSES_WITH_EMAIL, statusEmail } = require('./statusEmail');
 const discounts = require('./discounts');
 const reports = require('./reports');
+const adminAuth = require('./adminAuth');
 
 const PORT = process.env.PORT || 8081;
 const app = express();
@@ -151,31 +151,30 @@ app.post('/orders', async (req, res) => {
 
 // ----- Admin: view and filter saved orders (needs ADMIN_EMAIL + ADMIN_PASSWORD) -----
 
-const sameText = (given, expected) => {
-  const a = crypto.createHash('sha256').update(String(given)).digest();
-  const b = crypto.createHash('sha256').update(String(expected)).digest();
-  return crypto.timingSafeEqual(a, b);
-};
-
-const requireAdmin = (req, res, next) => {
-  const expectedEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-  const expectedPassword = process.env.ADMIN_PASSWORD || '';
-  if (!expectedEmail || !expectedPassword) {
+// The password can be changed from the admin page (see adminAuth.js)
+const requireAdmin = async (req, res, next) => {
+  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
     return res.status(503).json({ message: 'ADMIN_EMAIL and ADMIN_PASSWORD must be set on the server.' });
-  }
-  const givenEmail = String(req.get('x-admin-email') || '').trim().toLowerCase();
-  const givenPassword = String(req.get('x-admin-key') || '');
-  // Check both every time so a wrong email and a wrong password take the same time
-  const emailOk = sameText(givenEmail, expectedEmail);
-  const passwordOk = sameText(givenPassword, expectedPassword);
-  if (!emailOk || !passwordOk) {
-    return res.status(401).json({ message: 'Wrong email or password.' });
   }
   if (!getPool()) {
     return res.status(503).json({ message: 'Database is not connected.' });
   }
+  let ok = false;
+  try {
+    ok = await adminAuth.checkLogin(req.get('x-admin-email'), req.get('x-admin-key'));
+  } catch (err) {
+    console.error('Admin login check failed:', err.message);
+    return res.status(503).json({ message: 'Database is not connected.' });
+  }
+  if (!ok) {
+    return res.status(401).json({ message: 'Wrong email or password.' });
+  }
   return next();
 };
+
+app.post('/admin/password/change', adminAuth.changePassword);
+app.post('/admin/password/forgot', adminAuth.forgotPassword);
+app.post('/admin/password/reset', adminAuth.resetPassword);
 
 const adminRoute = (handler) => async (req, res) => {
   try {

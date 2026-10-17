@@ -67,6 +67,15 @@ const TABLES = [
     INDEX idx_items_collection (collection),
     CONSTRAINT fk_items_order FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS admin_login (
+    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    password_hash VARCHAR(255) NULL,
+    reset_code_hash VARCHAR(255) NULL,
+    reset_expires DATETIME NULL,
+    reset_tries TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    reset_sent_at DATETIME NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS discounts (
     collection VARCHAR(50) NOT NULL PRIMARY KEY,
     percent TINYINT UNSIGNED NOT NULL DEFAULT 0,
